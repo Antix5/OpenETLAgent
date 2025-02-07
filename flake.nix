@@ -10,28 +10,18 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-
-        # --- Python Environment Setup ---
-        pythonEnv = import ./python-env.nix {
-          inherit pkgs;
-          python = pkgs.python311;
-
-        };
-
+        python = pkgs.python311;
       in
       {
         devShells.default = pkgs.mkShell {
           buildInputs = [
-            pythonEnv.out.venv
+            (import ./python-env.nix { inherit pkgs python; }).venv
           ];
 
           shellHook = ''
             source .env
-
-            # --- Python Environment Activation ---
-            source ${pythonEnv.out.activationScript}/bin/activate-venv
-            echo "Virtual environment activated. To deactivate, run 'deactivate'."
-
+            echo "Python environment ready. Activate with:"
+            echo "source ${(import ./python-env.nix { inherit pkgs python; }).venv}/bin/activate"
           '';
         };
       });
