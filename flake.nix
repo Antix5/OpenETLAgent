@@ -5,67 +5,49 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11"; # Ensure this nixpkgs version has Python 3.11
     flake-utils.url = "github:numtide/flake-utils";
-    poetry2nix.url = "github:nix-community/poetry2nix"; # Add poetry2nix input
+    poetry2nix.url = "github:nix-community/poetry2nix";
   };
 
-  outputs = { self, nixpkgs, flake-utils, poetry2nix }: # Add poetry2nix to function args
+  outputs = { self, nixpkgs, flake-utils, poetry2nix }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        # Base pkgs set
-        pkgs = nixpkgs.legacyPackages.${system};
-
-        # Create an environment using poetry2nix.
-        # It reads pyproject.toml from projectDir by default.
-        myPythonEnv = pkgs.poetry2nix.mkPoetryEnv {
-          projectDir = ./.;                     # Location of pyproject.toml
-          python = pkgs.python311;             # Base Python interpreter
-          # If poetry2nix has trouble with a specific package, you might need overrides:
-          # overrides = pkgs.poetry2nix.overrides.withDefaults (final: prev: {
-          #   # Example: Override numpy if needed
-          #   # numpy = prev.numpy.overridePythonAttrs (old: {
-          #   #   doCheck = false; # Disable tests if they fail in nix build
-          #   # });
-          # });
+        # --- CORRECTED PART ---
+        # Import nixpkgs *with* the poetry2nix overlay applied.
+        # This makes poetry2nix functions available directly under `pkgs`.
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ poetry2nix.overlays.default ]; # Apply the overlay here
         };
+        # --- END CORRECTED PART ---
+
+        # Now 'pkgs' contains poetry2nix attributes, so this line should work:
+        myPythonEnv = pkgs.poetry2nix.mkPoetryEnv {
+          projectDir = ./.;
+          python = pkgs.python311; # Use the overlaid pkgs consistently
+          # overrides = pkgs.poetry2nix.overrides.withDefaults (final: prev: { ... });
+        };
+
       in
       {
-        devShells.default = pkgs.mkShell {
-          # Use inputsFrom to get python interpreter and packages from mkPoetryEnv
+        devShells.default = pkgs.mkShell { # Use the overlaid pkgs here too
           inputsFrom = [ myPythonEnv ];
-
-          # Add other non-python tools if needed
           packages = [
-             # e.g. pkgs.git
+             # Add other tools using the overlaid pkgs, e.g.: pkgs.git
           ];
-
           shellHook = ''
-            # Unset PYTHONPATH potentially set by user or other tools,
-            # poetry2nix environment usually handles paths correctly.
             unset PYTHONPATH
-
-            # Source local .env file if it exists
             if [ -f ".env" ]; then
               echo "Sourcing local .env file..."
-              set -a # Automatically export all variables defined in .env
-              source .env
-              set +a
+              set -a; source .env; set +a
             fi
-
             echo ""
             echo "Nix development environment (using poetry2nix) ready."
             echo "Python interpreter with packages from pyproject.toml is available."
-            # No manual venv activation needed! The python command is the correct one.
           '';
         };
 
-        # Optional: Expose the derivation for the environment itself
         packages.pythonEnv = myPythonEnv;
-
-        # Optional: If your project is a installable application
-        # packages.default = pkgs.poetry2nix.mkPoetryApplication {
-        #  projectDir = ./.;
-        #  python = pkgs.python311;
-        # };
+        # packages.default = pkgs.poetry2nix.mkPoetryApplication { ... }; # Use overlaid pkgs here too
       }
     );
 }
