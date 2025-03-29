@@ -3,7 +3,7 @@
 name = "open-etl-agent"
 version = "0.1.0" # Or your project's version
 description = "Python environment for Open ETL Agent"
-authors = ["Your Name <you@example.com>"]
+authors = ["Antoine Demangeon <antoinedemangeon@outlook.com>"]
 readme = "README.md" # Optional
 
 [tool.poetry.dependencies]
