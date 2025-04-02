@@ -24,18 +24,20 @@
         myPythonEnv = pkgs.poetry2nix.mkPoetryEnv {
           projectDir = ./.;
           python = pkgs.python311; # Use the overlaid pkgs consistently
-          # overrides = pkgs.poetry2nix.overrides.withDefaults (final: prev: { ... });
+          # overrides = pkgs.poetry2nix.overrides.withDefaults (final: prev: { ... }); # Temporarily remove overrides
         };
 
       in
       {
         devShells.default = pkgs.mkShell { # Use the overlaid pkgs here too
-          inputsFrom = [ myPythonEnv ];
+          inputsFrom = [ myPythonEnv ]; # Use inputsFrom for the Python env
           packages = [
-             # Add other tools using the overlaid pkgs, e.g.: pkgs.git
+             # Add other non-Python tools here using the overlaid pkgs, e.g.: pkgs.git
           ];
           shellHook = ''
-            unset PYTHONPATH
+            # Reverted explicit PATH export again
+            # unset PYTHONPATH # Keep this commented out for now
+            # Removed diagnostic prints
             if [ -f ".env" ]; then
               echo "Sourcing local .env file..."
               set -a; source .env; set +a

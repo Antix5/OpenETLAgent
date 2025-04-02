@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, PositiveInt
+from pydantic import BaseModel, Field, PositiveInt # Re-add PositiveInt if needed elsewhere, or remove if not
 from typing import List, Any, Literal, Union, Dict, Annotated
 
 # --- Schema Definition ---
@@ -17,22 +17,23 @@ class FileSchema(BaseModel):
 # --- Base Operation ---
 
 class BaseOperation(BaseModel):
-    operation_type = Field(..., description="Discriminator field for the operation type") # Removed : str type hint
+    # Revert to regular field for Pydantic discriminator
+    operation_type: str = Field(..., description="Discriminator field for the operation type")
     output_column: str = Field(..., description="Name of the column to create/modify")
 
 # --- Specific Operations ---
 
 class EqualityOperation(BaseOperation):
-    operation_type: Literal['equality'] = 'equality'
+    operation_type: Literal['equality'] = 'equality' # type: ignore
     input_column: str
 
 class ConcatenationOperation(BaseOperation):
-    operation_type: Literal['concatenation'] = 'concatenation'
+    operation_type: Literal['concatenation'] = 'concatenation' # type: ignore
     input_columns: List[str]
     separator: str = "" # Optional separator
 
 class ApplicationOperation(BaseOperation):
-    operation_type: Literal['application'] = 'application'
+    operation_type: Literal['application'] = 'application' # type: ignore
     input_columns: List[str]
     # How to represent the function?
     # Option 1: String containing Python lambda expression (Security Risk!)
@@ -41,17 +42,17 @@ class ApplicationOperation(BaseOperation):
     # function_name: str
 
 class SwitchingOperation(BaseOperation):
-    operation_type: Literal['switching'] = 'switching'
+    operation_type: Literal['switching'] = 'switching' # type: ignore
     condition_column: str # Assumed to be boolean type
     true_column: str # Column to use if condition is true
     false_column: str # Column to use if condition is false
 
 class AssignationOperation(BaseOperation):
-    operation_type: Literal['assignation'] = 'assignation'
+    operation_type: Literal['assignation'] = 'assignation' # type: ignore
     value: Any # The constant value to assign
 
 class CastingOperation(BaseOperation):
-    operation_type: Literal['casting'] = 'casting'
+    operation_type: Literal['casting'] = 'casting' # type: ignore
     input_column: str
     target_type: Literal['string', 'integer', 'float', 'boolean', 'positive integer'] # Match ColumnDefinition types
 

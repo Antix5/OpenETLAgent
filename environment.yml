@@ -1,0 +1,86 @@
+name: open-etl-agent # Name of the Conda environment
+channels:
+  - conda-forge # Prioritize conda-forge for broader package availability
+  - defaults
+dependencies:
+  - python=3.11 # Specify Python version
+  # Core dependencies from pyproject.toml
+  - polars>=1.26.0
+  - pydantic>=2.5,<3
+  - pyyaml>=6.0 # For reading YAML pipeline definitions
+  - numpy>=1.26,<2
+  - tqdm>=4.0
+  - python-dotenv>=1,<2
+  - requests>=2.31,<3
+  # Dependencies pulled in by others (might be needed explicitly for conda-forge)
+  - annotated-types>=0.6.0
+  - anyio>=3.5.0
+  - boto3>=1.37.23 # If bedrock extra is used
+  - botocore>=1.37.23 # If bedrock extra is used
+  - cachetools>=2.0.0
+  - certifi>=2017.4.17
+  - charset-normalizer>=2,<4
+  - click>=7.0 # For uvicorn, python-dotenv cli
+  # - cohere>=5.13.11 # Removed from here, will be installed via pip
+  - deprecated>=1.2.6
+  - distro>=1.7.0
+  - google-auth>=2.36.0 # If vertexai extra is used
+  - groq>=0.15.0 # If groq extra is used
+  - h11>=0.8
+  - httpcore==1.*
+  - httpx>=0.27 # Match mcp/others
+  - httpx-sse>=0.4
+  # - huggingface-hub>=0.16.4 # Removed from here, install via pip
+  - idna>=2.5,<4
+  - importlib-metadata>=6.0 # For opentelemetry-api
+  - jiter>=0.4.0
+  - jmespath>=0.7.1,<2.0.0
+  - markdown-it-py>=2.2.0
+  - mdurl>=0.1,<1.0
+  # - mistralai>=1.2.5 # Removed from here, install via pip
+  - openai>=1.67.0 # If openai extra is used
+  - opentelemetry-api>=1.28.0
+  - packaging>=20.9
+  - pluggy>=1.5,<2 # For pytest
+  - prompt-toolkit>=3 # If cli extra is used
+  - pyasn1>=0.6.1,<0.7.0
+  - pyasn1-modules>=0.4.2
+  - pydantic-core>=2.10 # Match pydantic
+  - pydantic-settings>=2.5.2
+  - pygments>=2.13.0,<3.0.0
+  - python-dateutil>=2.8.2
+  - pytz>=2020.1
+  - requests>=2.31,<3 # Match project
+  - rich>=13 # If cli extra is used
+  - rsa>=3.1.4,<5
+  - s3transfer>=0.11.0 # For boto3
+  - six>=1.5 # For python-dateutil
+  - sniffio>=1.1
+  - sse-starlette>=1.6.1
+  - starlette>=0.27
+  - tokenizers>=0.15 # For cohere
+  - types-requests>=2.0.0 # For cohere
+  - typing-extensions>=4.10 # Match multiple deps
+  - typing-inspection>=0.4.0
+  - tzdata>=2022.7
+  - uvicorn>=0.23.1 # For mcp
+  - wcwidth # For prompt-toolkit
+  - wrapt>=1.10 # For deprecated
+  - zipp>=3.20 # For importlib-metadata
+  - pip # Add pip itself as a dependency
+  # Pip dependencies (if any are not available on conda-forge)
+  - pip:
+    - cohere>=5.13.11 # Install cohere via pip
+    - huggingface-hub>=0.16.4 # Install huggingface-hub via pip
+    - mistralai>=1.2.5 # Install mistralai via pip
+  # Dev/Test dependencies (optional, add if needed in the env)
+  # - pytest>=8.3.4
+  # - setuptools==75.8.0 # Pinning setuptools is unusual in Conda
+  # Dependencies for extras not explicitly used yet (e.g., mcp, pydantic-ai)
+  # Add them here if/when needed
+  # - fastavro>=1.9.4 # Needed by cohere, but conda should resolve it
+  # - logfire-api>=1.2.0
+  # - mcp>=1.4.1
+  # - pydantic-ai-slim>=0.0.46 # Or pydantic-ai
+  # - pydantic-graph>=0.0.46
+  # - websockets>=15.0.1 # For mcp[ws]

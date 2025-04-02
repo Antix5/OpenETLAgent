@@ -80,8 +80,9 @@ def load_input_data(file_path: Path, schema: FileSchema) -> pl.DataFrame:
             logging.warning(f"No Polars type mapping found for schema type: {col_def.type} for column '{col_name}'. Polars will infer.")
 
     try:
-        # Use infer_schema_length=0 to rely solely on provided dtypes where possible
-        df = pl.read_csv(file_path, dtypes=dtype_map, infer_schema_length=1000 if not dtype_map else 0)
+        # Use infer_schema_length=0 to rely solely on provided schema_overrides where possible
+        # Renamed 'dtypes' to 'schema_overrides'
+        df = pl.read_csv(file_path, schema_overrides=dtype_map, infer_schema_length=1000 if not dtype_map else 0)
         logging.info(f"Input data loaded successfully. Shape: {df.shape}")
 
         # Basic validation: Check if all columns defined in schema exist
@@ -138,9 +139,21 @@ def apply_operations(df: pl.DataFrame, operations: list) -> pl.DataFrame:
                 # Using map_elements for arbitrary Python functions. This is slower than native expressions.
                 logging.warning(f"Executing ApplicationOperation '{op.output_column}' using potentially slow map_elements and eval(). Ensure 'function_str' is trusted.")
                 try:
-                    # Compile the lambda string
-                    # The lambda should accept a tuple of values corresponding to input_columns
-                    lambda_func = eval(op.function_str, {"__builtins__": {}}, {}) # Restrict builtins
+                    # Compile the lambda string, providing a safe subset of builtins
+                    safe_builtins = {
+                        "float": float,
+                        "int": int,
+                        "str": str,
+                        "list": list,
+                        "dict": dict,
+                        "set": set,
+                        "tuple": tuple,
+                        "True": True,
+                        "False": False,
+                        "None": None,
+                        # Add other safe builtins if needed
+                    }
+                    lambda_func = eval(op.function_str, {"__builtins__": safe_builtins}, {}) # Pass safe builtins
 
                     # Define the Polars expression using map_elements
                     # Note: map_elements passes elements one by one, not the whole row dict like pandas apply
@@ -150,17 +163,15 @@ def apply_operations(df: pl.DataFrame, operations: list) -> pl.DataFrame:
                     # A more robust approach might involve inspecting the lambda signature or requiring a specific format.
                     # For now, assume the lambda takes individual args.
 
-                    # Let's refine the lambda expectation: Assume it takes a tuple/list of args
-                    # Example function_str: "lambda args: float(args[0]) + args[1]" for inputs ['Value1', 'Value2']
+                    # Let's pass the struct directly, as it behaves like a dict, matching the lambda in the YAML
                     map_expr = pl.struct(op.input_columns).map_elements(
-                        lambda row_struct: lambda_func(list(row_struct.values())),
+                        lambda row_struct: lambda_func(row_struct), # Pass the struct directly
                         return_dtype=Float64 # TODO: Infer return type or make it configurable? Defaulting to Float64 for now.
                     ).alias(op.output_column)
 
-                    # Suppress experimental warning if desired
-                    with warnings.catch_warnings():
-                         warnings.simplefilter("ignore", category=pl.exceptions.PolarsExperimentalWarning)
-                         current_df = current_df.with_columns(map_expr)
+                    # Apply the map_elements expression
+                    # Removed the warning suppression block as PolarsExperimentalWarning doesn't exist in this version
+                    current_df = current_df.with_columns(map_expr)
 
                 except Exception as e:
                     raise ValueError(f"Error executing function_str '{op.function_str}' for ApplicationOperation: {e}")

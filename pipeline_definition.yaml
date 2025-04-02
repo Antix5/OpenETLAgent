@@ -38,16 +38,7 @@ operations:
     function_str: "lambda r: float(r['Value1']) + r['Value2']"
     output_column: total_value
 
-  - operation_type: switching
-    condition_column: IsEnabled
-    true_column: _active_literal # Temporary column holding 'Active'
-    false_column: _inactive_literal # Temporary column holding 'Inactive'
-    output_column: status
-    # Note: Switching requires the true/false values to exist as columns.
-    # We'll need preceding 'assignation' steps to create these temporary literals,
-    # or modify the switching logic in main.py to handle literals directly.
-    # Let's add assignations for clarity:
-
+  # Assign literal values needed for switching *before* the switching operation
   - operation_type: assignation
     value: "Active"
     output_column: _active_literal
@@ -55,6 +46,13 @@ operations:
   - operation_type: assignation
     value: "Inactive"
     output_column: _inactive_literal
+
+  # Now perform the switching operation
+  - operation_type: switching
+    condition_column: IsEnabled
+    true_column: _active_literal # Now this column exists
+    false_column: _inactive_literal # Now this column exists
+    output_column: status
 
   - operation_type: casting
     input_column: ID
