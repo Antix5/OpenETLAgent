@@ -12,6 +12,7 @@ dependencies:
   - tqdm>=4.0
   - python-dotenv>=1,<2
   - requests>=2.31,<3
+  - litellm>=1.41.0 # Added for LLM interaction
   # Dependencies pulled in by others (might be needed explicitly for conda-forge)
   - annotated-types>=0.6.0
   - anyio>=3.5.0

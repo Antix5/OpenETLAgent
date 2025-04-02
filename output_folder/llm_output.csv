@@ -1,0 +1,7 @@
+order_ref,customer_domain,product_category,total_price,order_date,is_shipped,data_source
+ORD-101,example.com,Electronics,1199.98,2024-01-15,true,SystemA
+ORD-102,test.co.uk,Books,19.95,2024-01-15,false,SystemA
+ORD-103,sample.org,Home Goods,47.5,2024-01-16,true,SystemA
+ORD-104,example.com,Books,12.0,2024-01-16,false,SystemA
+ORD-105,domain.net,Unknown,12.5,2024-01-17,false,SystemA
+ORD-106,test.co.uk,Electronics,1250.0,2024-01-17,true,SystemA
