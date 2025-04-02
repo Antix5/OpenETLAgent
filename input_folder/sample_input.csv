@@ -1,0 +1,6 @@
+ID,Name,Category,Value1,Value2,IsEnabled
+1,Apple,Fruit,10,20.5,true
+2,Banana,Fruit,15,30.0,false
+3,Carrot,Vegetable,5,15.2,true
+4,Date,Fruit,25,50.8,true
+5,Eggplant,Vegetable,8,22.1,false

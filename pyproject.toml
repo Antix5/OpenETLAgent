@@ -20,6 +20,7 @@ requests = ">=2.31,<3"
 pytest = ">=8.3.4"
 setuptools = "==75.8.0" # Pinning setuptools like this is uncommon but included as requested
 pydantic-ai = ">=0.0.22"
+polars = ">=1.26.0"
 
 [build-system]
 # Standard boilerplate for Poetry projects

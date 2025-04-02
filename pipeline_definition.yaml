@@ -1,0 +1,66 @@
+input_schema:
+  name: sample_input
+  columns:
+    ID: { name: ID, type: integer, description: Unique identifier }
+    Name: { name: Name, type: string, description: Product name }
+    Category: { name: Category, type: string, description: Product category }
+    Value1: { name: Value1, type: integer, description: First numeric value }
+    Value2: { name: Value2, type: float, description: Second numeric value }
+    IsEnabled: { name: IsEnabled, type: boolean, description: Activation status }
+
+output_schema:
+  name: sample_output
+  output_format: csv
+  columns:
+    string_id: { name: string_id, type: string, description: Identifier as string }
+    product_name: { name: product_name, type: string, description: Copied product name }
+    description: { name: description, type: string, description: Concatenated name and category }
+    total_value: { name: total_value, type: float, description: Sum of Value1 and Value2 }
+    status: { name: status, type: string, description: Derived status (Active/Inactive) }
+    fixed_code: { name: fixed_code, type: string, description: Constant code }
+    # We might want to keep original columns too, or define only new ones.
+    # For simplicity, this example only defines the *new* or *transformed* columns.
+    # The implementation in main.py will decide whether to keep originals.
+
+operations:
+  - operation_type: equality
+    input_column: Name
+    output_column: product_name
+
+  - operation_type: concatenation
+    input_columns: [Name, Category]
+    separator: " - "
+    output_column: description
+
+  - operation_type: application
+    input_columns: [Value1, Value2]
+    # IMPORTANT: Using eval() on this string is a security risk if the YAML is untrusted.
+    function_str: "lambda r: float(r['Value1']) + r['Value2']"
+    output_column: total_value
+
+  - operation_type: switching
+    condition_column: IsEnabled
+    true_column: _active_literal # Temporary column holding 'Active'
+    false_column: _inactive_literal # Temporary column holding 'Inactive'
+    output_column: status
+    # Note: Switching requires the true/false values to exist as columns.
+    # We'll need preceding 'assignation' steps to create these temporary literals,
+    # or modify the switching logic in main.py to handle literals directly.
+    # Let's add assignations for clarity:
+
+  - operation_type: assignation
+    value: "Active"
+    output_column: _active_literal
+
+  - operation_type: assignation
+    value: "Inactive"
+    output_column: _inactive_literal
+
+  - operation_type: casting
+    input_column: ID
+    target_type: string
+    output_column: string_id
+
+  - operation_type: assignation
+    value: "FXD-001"
+    output_column: fixed_code

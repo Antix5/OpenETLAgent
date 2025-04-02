@@ -1,0 +1,13 @@
+
+files:
+  name: file1
+  output_format : csv
+  columns:
+    col1:
+      name : first column of file
+      type : string
+      description : this is a description of the column
+    col2:
+      name : second col
+      type : positive integer
+      description : Description of the second column
