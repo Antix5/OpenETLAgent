@@ -10,9 +10,21 @@ class ColumnDefinition(BaseModel):
 
 class FileSchema(BaseModel):
     name: str
-    # input_format: str | None = None # Maybe needed for input schema
-    output_format: Literal['csv', 'json', 'parquet'] | None = None # For output schema
+    # input_format: str | None = None # Maybe needed for input schema? Path suffix usually sufficient.
+    # output_format removed, will be in OutputDefinition
     columns: Dict[str, ColumnDefinition] # Use column technical name as key
+
+# --- Input/Output Definitions ---
+
+class InputDefinition(BaseModel):
+    path: str = Field(..., description="Path to the input file.")
+    file_schema: FileSchema = Field(..., description="Schema definition for this input file.") # Renamed from 'schema'
+
+class OutputDefinition(BaseModel):
+    path: str = Field(..., description="Path for the output file.")
+    format: Literal['csv', 'json', 'parquet'] = Field(default='csv', description="Format for the output file.")
+    file_schema: FileSchema = Field(..., description="Schema definition for this output file.") # Renamed from 'schema'
+
 
 # --- Base Operation ---
 
@@ -101,6 +113,7 @@ AnyOperation = Annotated[
 
 
 class EtlPipeline(BaseModel):
-    input_schema: FileSchema
-    output_schema: FileSchema
+    # Replaced single input/output schema with dictionaries
+    inputs: Dict[str, InputDefinition] = Field(..., description="Dictionary of named inputs, each with a path and schema.")
+    outputs: Dict[str, OutputDefinition] = Field(..., description="Dictionary of named outputs, each with a path, format, and schema.")
     operations: List[AnyOperation] # The sequence of operations
