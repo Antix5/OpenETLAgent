@@ -1,7 +1,0 @@
-order_id,customer_email,product_sku,quantity,unit_price,order_timestamp,status_code
-101,alice@example.com,ELEC-101,2,599.99,2024-01-15T10:30:00Z,3
-102,bob@test.co.uk,BOOK-450,1,19.95,2024-01-15T11:05:21Z,2
-103,charlie@sample.org,HOME-034,5,9.50,2024-01-16T14:00:55Z,3
-104,alice@example.com,BOOK-112,1,12.00,2024-01-16T16:22:01Z,1
-105,david@domain.net,MISC-999,10,1.25,2024-01-17T09:15:00Z,4
-106,eve@test.co.uk,ELEC-205,1,1250.00,2024-01-17T10:00:00Z,3

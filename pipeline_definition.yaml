@@ -1,4 +1,3 @@
-# Pipeline definition using the new structure with multiple inputs/outputs
 
 inputs:
   orders: # Logical name for the main input
@@ -83,55 +82,3 @@ outputs:
           name: is_shipped
           type: boolean
           description: True if status_code is 3, False otherwise.
-
-# Operations embedded directly in the pipeline definition
-operations:
-- operation_type: assignation
-  output_column: order_prefix
-  value: ORD-
-- operation_type: casting
-  output_column: order_id_str
-  input_column: order_id
-  target_type: string
-- operation_type: concatenation
-  output_column: order_ref
-  input_columns:
-  - order_prefix
-  - order_id_str
-  separator: ''
-- operation_type: bind
-  output_column: ignored # Output column is ignored for bind
-  # Use the logical input name 'customers' here, resolved by apply_operations
-  right_file_path: customers
-  right_schema_columns: # Schema of the right file (customers)
-    cust_id: integer
-    customer_name: string
-    customer_country: string
-  left_on: customer_id # From the 'orders' input
-  right_on: cust_id # From the 'customers' input
-  how: left
-  columns_to_add: # Columns from 'customers' to add
-  - customer_name
-  - customer_country
-- operation_type: equality
-  output_column: customer_name
-  input_column: customer_name # This now refers to the column added by bind
-- operation_type: equality
-  output_column: customer_country
-  input_column: customer_country # This now refers to the column added by bind
-- operation_type: application
-  output_column: product_category
-  input_columns:
-  - product_sku
-  function_str: 'lambda r: r[''product_sku''][:3]'
-- operation_type: arithmetic
-  output_column: total_price
-  input_columns:
-  - quantity
-  - unit_price
-  operator: '*'
-- operation_type: comparison
-  output_column: is_shipped
-  input_column: status_code
-  operator: ==
-  value: '3'

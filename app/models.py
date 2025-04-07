@@ -1,5 +1,16 @@
-from pydantic import BaseModel, Field, PositiveInt # Re-add PositiveInt if needed elsewhere, or remove if not
+from pydantic import BaseModel, Field # Removed PositiveInt as it's not used directly here
 from typing import List, Any, Literal, Union, Dict, Annotated
+from polars import Utf8, Int64, Float64, Boolean # Added Polars types
+
+# --- Type Mapping ---
+POLARS_TYPE_MAP = {
+    'string': Utf8,
+    'integer': Int64,
+    'float': Float64,
+    'boolean': Boolean,
+    'positive integer': Int64 # Keep positive integer mapping for schema definition
+}
+SCHEMA_TYPE_MAP_REVERSE = {v: k for k, v in POLARS_TYPE_MAP.items()}
 
 # --- Schema Definition ---
 
@@ -11,19 +22,15 @@ class ColumnDefinition(BaseModel):
 class FileSchema(BaseModel):
     name: str
     # input_format: str | None = None # Maybe needed for input schema? Path suffix usually sufficient.
-    # output_format removed, will be in OutputDefinition
+    # output_format removed, will be in FileDefinition
     columns: Dict[str, ColumnDefinition] # Use column technical name as key
 
 # --- Input/Output Definitions ---
 
-class InputDefinition(BaseModel):
-    path: str = Field(..., description="Path to the input file.")
-    file_schema: FileSchema = Field(..., description="Schema definition for this input file.") # Renamed from 'schema'
-
-class OutputDefinition(BaseModel):
-    path: str = Field(..., description="Path for the output file.")
-    format: Literal['csv', 'json', 'parquet'] = Field(default='csv', description="Format for the output file.")
-    file_schema: FileSchema = Field(..., description="Schema definition for this output file.") # Renamed from 'schema'
+class FileDefinition(BaseModel):
+    path: str = Field(..., description="Path to the file.")
+    format: Literal['csv', 'json', 'parquet'] = Field(default='csv', description="Format for the file.")
+    file_schema: FileSchema = Field(..., description="Schema definition of the file.") # Renamed from 'schema'
 
 
 # --- Base Operation ---
@@ -114,6 +121,6 @@ AnyOperation = Annotated[
 
 class EtlPipeline(BaseModel):
     # Replaced single input/output schema with dictionaries
-    inputs: Dict[str, InputDefinition] = Field(..., description="Dictionary of named inputs, each with a path and schema.")
-    outputs: Dict[str, OutputDefinition] = Field(..., description="Dictionary of named outputs, each with a path, format, and schema.")
-    operations: List[AnyOperation] # The sequence of operations
+    inputs: Dict[str, FileDefinition] = Field(..., description="Dictionary of named inputs, each with a path and schema.")
+    outputs: Dict[str, FileDefinition] = Field(..., description="Dictionary of named outputs, each with a path, format, and schema.")
+    operations: List[AnyOperation] = [] # The sequence of operations

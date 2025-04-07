@@ -1,6 +1,0 @@
-string_id,product_name,description,total_value,status,fixed_code
-1,Apple,Apple - Fruit,30.5,Active,FXD-001
-2,Banana,Banana - Fruit,45.0,Inactive,FXD-001
-3,Carrot,Carrot - Vegetable,20.2,Active,FXD-001
-4,Date,Date - Fruit,75.8,Active,FXD-001
-5,Eggplant,Eggplant - Vegetable,30.1,Inactive,FXD-001

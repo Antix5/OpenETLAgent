@@ -1,56 +1,57 @@
 import argparse
 import yaml
 import polars as pl
-from polars import Utf8, Int64, Float64, Boolean # Explicit Polars types
 from pathlib import Path
 import sys
 import logging
-import warnings # To suppress Polars experimental warning for map_elements if needed
 import os
 import json
 from dotenv import load_dotenv
 import litellm
-from typing import get_args, Tuple, List, Optional, Dict # Added Optional, Dict
+from typing import List, Optional, Dict, Sequence # Added Sequence
 import re # Import re for cleaning LLM response
 
-# Assuming models.py is in the same directory or PYTHONPATH is set correctly
-try:
-    from models import (
-        EtlPipeline, EqualityOperation, ConcatenationOperation,
-        ApplicationOperation, SwitchingOperation, AssignationOperation,
-        CastingOperation, ArithmeticOperation, ComparisonOperation, BindOperation,
-        FileSchema, InputDefinition, OutputDefinition # Added Input/OutputDefinition
-    )
-except ImportError:
-    # Simple fallback for running directly if app module isn't installed
-    sys.path.insert(0, str(Path(__file__).parent.resolve()))
-    from models import (
-        EtlPipeline, EqualityOperation, ConcatenationOperation,
-        ApplicationOperation, SwitchingOperation, AssignationOperation,
-        CastingOperation, ArithmeticOperation, ComparisonOperation, BindOperation,
-        FileSchema, InputDefinition, OutputDefinition # Added Input/OutputDefinition
-    )
+# Attempt standard import first
+from app.models import (
+    EtlPipeline, FileDefinition, BaseOperation, # Added BaseOperation
+    POLARS_TYPE_MAP, SCHEMA_TYPE_MAP_REVERSE,
+)
+from app.instruct_prompt import get_instruct_prompt
+from app.operations.equality import apply_equality
+from app.operations.concatenation import apply_concatenation
+from app.operations.application import apply_application
+from app.operations.asignation import apply_assignation
+from app.operations.switching import apply_switching
+from app.operations.casting import apply_casting
+from app.operations.arithmetic import apply_arithmetic
+from app.operations.comparison import apply_comparison
+from app.operations.bind import apply_bind
 
 # Load environment variables from .env file
 load_dotenv()
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# --- Type Mapping ---
-POLARS_TYPE_MAP = {
-    'string': Utf8,
-    'integer': Int64,
-    'float': Float64,
-    'boolean': Boolean,
-    'positive integer': Int64
+# --- Operation Dispatcher ---
+# Map operation_type string to the corresponding function
+OPERATION_DISPATCHER = {
+    'equality': apply_equality,
+    'concatenation': apply_concatenation,
+    'application': apply_application,
+    'assignation': apply_assignation,
+    'switching': apply_switching,
+    'casting': apply_casting,
+    'arithmetic': apply_arithmetic,
+    'comparison': apply_comparison,
+    'bind': apply_bind,
 }
-SCHEMA_TYPE_MAP_REVERSE = {v: k for k, v in POLARS_TYPE_MAP.items()}
+
 
 # --- LLM Operation Generation ---
 
 def generate_operations_with_llm(
-    inputs: Dict[str, InputDefinition],
-    outputs: Dict[str, OutputDefinition],
+    inputs: Dict[str, FileDefinition],
+    outputs: Dict[str, FileDefinition],
     previous_feedback: str | None = None
 ) -> list[dict]:
     """
@@ -82,37 +83,27 @@ def generate_operations_with_llm(
 
     # Simplified prompt structure (assuming LLM knows the operations from context/previous turns if needed)
     # Or re-include the full operation list if generation quality degrades.
-    prompt = f"""
-You are an expert ETL pipeline generator. Your task is to determine the sequence of operations needed to transform data from the input schema to the output schema.
+    prompt = get_instruct_prompt(
+        primary_input_key=primary_input_key,
+        input_schema_str=input_schema_str,
+        output_schema_str=output_schema_str,
+        primary_output_key=primary_output_key,
+        inputs=inputs,
+        outputs=outputs
+    )
 
-Input Schema ({primary_input_key}):
-```json
-{input_schema_str}
-```
-
-Output Schema ({primary_output_key}):
-```json
-{output_schema_str}
-```
-
-Available Input Files (defined in pipeline YAML): {list(inputs.keys())}
-Available Output Files (defined in pipeline YAML): {list(outputs.keys())}
-
-Generate *only* the YAML list of operations required for the transformation, starting with `- operation_type: ...`.
-Use the available operations (equality, concatenation, arithmetic, comparison, switching, casting, assignation, bind, application).
-Ensure file paths used in 'bind' operations match the paths defined in the pipeline YAML's 'inputs' section.
-Do not include any introductory text, explanations, or markdown formatting like ```yaml ... ``` around the list.
-"""
     if previous_feedback:
         feedback_prompt = f"""
 
-IMPORTANT: The previous attempt failed with the following feedback. Please analyze the feedback and generate a corrected sequence of operations:
---- PREVIOUS FEEDBACK ---
-{previous_feedback}
---- END PREVIOUS FEEDBACK ---
+        IMPORTANT: The previous attempt failed with the following feedback. Please analyze the feedback and generate a corrected sequence of operations:
+        --- PREVIOUS FEEDBACK ---
+        {previous_feedback}
+        --- END PREVIOUS FEEDBACK ---
 
-Please provide the corrected sequence of function calls:
-"""
+        Please provide the corrected sequence of function calls:
+        """
+        
+
         prompt += feedback_prompt
 
     try:
@@ -131,6 +122,9 @@ Please provide the corrected sequence of function calls:
             llm_output_content = response.choices[0].message.content # type: ignore
             if not isinstance(llm_output_content, str):
                  raise ValueError("LLM response content is not a string or is missing.")
+            
+
+            print(llm_output_content)
 
             logging.debug(f"Raw LLM Output:\n{llm_output_content}")
             cleaned_yaml = re.sub(r'^```yaml\s*|\s*```$', '', llm_output_content, flags=re.MULTILINE).strip()
@@ -157,12 +151,12 @@ Please provide the corrected sequence of function calls:
         raise
 
 
-# --- Output Schema Validation ---
+# --- Output Validation ---
 
-def validate_output_schema(df: pl.DataFrame, output_def: OutputDefinition) -> str | None:
-    """Validates the DataFrame schema against a specific output definition's schema."""
+def validate_schema(df: pl.DataFrame, output_def: FileDefinition) -> str | None:
+    """Validates the DataFrame schema against a specific definition's schema."""
     target_schema = output_def.file_schema
-    logging.info(f"Validating output DataFrame schema against schema '{target_schema.name}' for output '{output_def.path}'...")
+    logging.info(f"Validating output DataFrame schema against schema '{target_schema.name}' for '{output_def.path}'...")
     feedback_lines = []
     actual_schema = df.schema
     target_columns = target_schema.columns
@@ -194,11 +188,11 @@ def validate_output_schema(df: pl.DataFrame, output_def: OutputDefinition) -> st
         feedback_lines.append(f"Type mismatches for schema '{target_schema.name}': {'; '.join(type_mismatches)}")
 
     if feedback_lines:
-        feedback = f"Output schema validation failed for output '{output_def.path}' (schema '{target_schema.name}'):\n- " + "\n- ".join(feedback_lines)
+        feedback = f"schema validation failed for output '{output_def.path}' (schema '{target_schema.name}'):\n- " + "\n- ".join(feedback_lines)
         logging.warning(feedback)
         return feedback
     else:
-        logging.info(f"Output schema validation successful for output '{output_def.path}' (schema '{target_schema.name}').")
+        logging.info(f"Output schema validation successful for '{output_def.path}' (schema '{target_schema.name}').")
         return None
 
 
@@ -226,14 +220,14 @@ def load_pipeline_definition(file_path: Path) -> EtlPipeline:
 
 # --- Input Data Loading ---
 
-def load_input_data(input_def: InputDefinition) -> pl.DataFrame:
-    """Loads input data based on an InputDefinition using Polars."""
+def load_data(input_def: FileDefinition) -> pl.DataFrame:
+    """Loads data based on an FileDefinition using Polars."""
     file_path = Path(input_def.path)
     schema = input_def.file_schema
-    logging.info(f"Loading input data from: {file_path} (Schema: {schema.name})")
+    logging.info(f"Loading data from: {file_path} (Schema: {schema.name})")
     if not file_path.exists():
-        logging.error(f"Input data file not found: {file_path}")
-        raise FileNotFoundError(f"Input data file not found: {file_path}")
+        logging.error(f"Data file not found: {file_path}")
+        raise FileNotFoundError(f"Data file not found: {file_path}")
 
     if file_path.suffix.lower() != '.csv':
         raise NotImplementedError("Currently only CSV input format is supported.")
@@ -249,7 +243,7 @@ def load_input_data(input_def: InputDefinition) -> pl.DataFrame:
 
     try:
         df = pl.read_csv(file_path, schema_overrides=dtype_map, infer_schema_length=1000 if not dtype_map else 0)
-        logging.info(f"Input data loaded successfully from {file_path}. Shape: {df.shape}")
+        logging.info(f"Data loaded successfully from {file_path}. Shape: {df.shape}")
 
         schema_cols = set(schema_cols_dict.keys())
         df_cols = set(df.columns)
@@ -268,165 +262,44 @@ def load_input_data(input_def: InputDefinition) -> pl.DataFrame:
 
 # --- Operation Application ---
 
-def apply_operations(df: pl.DataFrame, operations: list, pipeline_inputs: Dict[str, InputDefinition]) -> pl.DataFrame:
+def apply_operations(df: pl.DataFrame, operations: Sequence[BaseOperation], pipeline_inputs: Dict[str, FileDefinition]) -> pl.DataFrame:
     """
     Applies the sequence of ETL operations to the Polars DataFrame.
     Requires pipeline_inputs to resolve paths for BindOperation.
     """
     logging.info(f"Applying {len(operations)} operations using Polars...")
-    temp_cols = set()
+    temp_cols = set() # Keep track of temporary columns created by assignation
     current_df = df
 
     for i, op in enumerate(operations):
         logging.info(f"Applying operation {i+1}/{len(operations)}: {op.operation_type} -> {op.output_column}")
         try:
-            # --- Operation Implementations (largely unchanged, but check BindOperation) ---
-            if isinstance(op, EqualityOperation):
-                if op.input_column not in current_df.columns:
-                    raise ValueError(f"EqualityOperation: Input column '{op.input_column}' not found.")
-                current_df = current_df.with_columns(
-                    pl.col(op.input_column).alias(op.output_column)
-                )
+            # Look up the function based on operation_type
+            apply_func = OPERATION_DISPATCHER.get(op.operation_type)
 
-            elif isinstance(op, ConcatenationOperation):
-                missing_inputs = [col for col in op.input_columns if col not in current_df.columns]
-                if missing_inputs:
-                    raise ValueError(f"ConcatenationOperation: Input columns not found: {missing_inputs}")
-                concat_expr = pl.concat_str(
-                    [pl.col(c).cast(Utf8) for c in op.input_columns],
-                    separator=op.separator
-                ).alias(op.output_column)
-                current_df = current_df.with_columns(concat_expr)
-
-            elif isinstance(op, ApplicationOperation):
-                missing_inputs = [col for col in op.input_columns if col not in current_df.columns]
-                if missing_inputs:
-                    raise ValueError(f"ApplicationOperation: Input columns not found: {missing_inputs}")
-                logging.warning(f"Executing ApplicationOperation '{op.output_column}' using potentially slow map_elements and eval(). Ensure 'function_str' is trusted.")
-                try:
-                    safe_builtins = {"float": float, "int": int, "str": str, "list": list, "dict": dict, "set": set, "tuple": tuple, "True": True, "False": False, "None": None}
-                    lambda_func = eval(op.function_str, {"__builtins__": safe_builtins}, {})
-                    map_expr = pl.struct(op.input_columns).map_elements(
-                        lambda row_struct: lambda_func(row_struct),
-                        return_dtype=pl.Utf8 # Defaulting to string, cast later if needed
-                    ).alias(op.output_column)
-                    current_df = current_df.with_columns(map_expr)
-                except Exception as e:
-                    raise ValueError(f"Error executing function_str '{op.function_str}' for ApplicationOperation: {e}")
-
-            elif isinstance(op, AssignationOperation):
-                current_df = current_df.with_columns(
-                    pl.lit(op.value).alias(op.output_column)
-                )
-                if op.output_column.startswith('_') and op.output_column.endswith('_literal'):
-                    temp_cols.add(op.output_column)
-
-            elif isinstance(op, SwitchingOperation):
-                if op.condition_column not in current_df.columns:
-                    raise ValueError(f"SwitchingOperation: Condition column '{op.condition_column}' not found.")
-                true_val_expr = pl.col(op.true_column) if op.true_column in current_df.columns else pl.lit(op.true_column)
-                false_val_expr = pl.col(op.false_column) if op.false_column in current_df.columns else pl.lit(op.false_column)
-                condition_col_expr = pl.col(op.condition_column)
-                if current_df[op.condition_column].dtype != Boolean:
-                     logging.warning(f"SwitchingOperation: Condition column '{op.condition_column}' is not boolean type ({current_df[op.condition_column].dtype}). Attempting cast.")
-                     try:
-                         condition_col_expr = pl.col(op.condition_column).cast(Boolean)
-                     except Exception as e:
-                         raise ValueError(f"Failed to cast condition column '{op.condition_column}' (type: {current_df[op.condition_column].dtype}) to boolean: {e}")
-                switch_expr = pl.when(condition_col_expr).then(true_val_expr).otherwise(false_val_expr).alias(op.output_column)
-                current_df = current_df.with_columns(switch_expr)
-
-            elif isinstance(op, CastingOperation):
-                if op.input_column not in current_df.columns:
-                    raise ValueError(f"CastingOperation: Input column '{op.input_column}' not found.")
-                target_pl_type = POLARS_TYPE_MAP.get(op.target_type)
-                if not target_pl_type:
-                    raise ValueError(f"CastingOperation: Unsupported target type '{op.target_type}'")
-                try:
-                    current_df = current_df.with_columns(
-                        pl.col(op.input_column).cast(target_pl_type).alias(op.output_column)
-                    )
-                except Exception as e:
-                    raise ValueError(f"Failed to cast column '{op.input_column}' to type '{op.target_type}' (Polars type: {target_pl_type}): {e}")
-
-            elif isinstance(op, ArithmeticOperation):
-                if len(op.input_columns) != 2: raise ValueError("ArithmeticOperation requires exactly two input columns.")
-                col_a_name, col_b_name = op.input_columns
-                if col_a_name not in current_df.columns: raise ValueError(f"ArithmeticOperation: Input column '{col_a_name}' not found.")
-                if col_b_name not in current_df.columns: raise ValueError(f"ArithmeticOperation: Input column '{col_b_name}' not found.")
-                col_a, col_b = pl.col(col_a_name), pl.col(col_b_name)
-                if op.operator == '+': arithmetic_expr = (col_a + col_b)
-                elif op.operator == '-': arithmetic_expr = (col_a - col_b)
-                elif op.operator == '*': arithmetic_expr = (col_a * col_b)
-                elif op.operator == '/': arithmetic_expr = (col_a / col_b)
-                else: raise ValueError(f"ArithmeticOperation: Unsupported operator '{op.operator}'")
-                current_df = current_df.with_columns(arithmetic_expr.alias(op.output_column))
-
-            elif isinstance(op, ComparisonOperation):
-                if op.input_column not in current_df.columns: raise ValueError(f"ComparisonOperation: Input column '{op.input_column}' not found.")
-                comparison_value_lit = pl.lit(op.value)
-                input_col_expr = pl.col(op.input_column).cast(pl.Utf8) # Always cast input to string for comparison with string literal
-                logging.debug(f"ComparisonOperation: Comparing column '{op.input_column}' (cast to Utf8) with string literal '{op.value}'")
-                if op.operator == '==': comparison_expr = (input_col_expr == comparison_value_lit)
-                elif op.operator == '!=': comparison_expr = (input_col_expr != comparison_value_lit)
-                elif op.operator == '>': comparison_expr = (input_col_expr > comparison_value_lit)
-                elif op.operator == '<': comparison_expr = (input_col_expr < comparison_value_lit)
-                elif op.operator == '>=': comparison_expr = (input_col_expr >= comparison_value_lit)
-                elif op.operator == '<=': comparison_expr = (input_col_expr <= comparison_value_lit)
-                else: raise ValueError(f"ComparisonOperation: Unsupported operator '{op.operator}'")
-                current_df = current_df.with_columns(comparison_expr.alias(op.output_column))
-
-            elif isinstance(op, BindOperation):
-                # Resolve right_file_path against the paths defined in pipeline_inputs
-                # This assumes right_file_path in the operation matches a key in pipeline_inputs
-                # or is a direct relative path from the project root.
-                # Let's prioritize matching a key first.
-                resolved_right_path_str = None
-                if op.right_file_path in pipeline_inputs:
-                    resolved_right_path_str = pipeline_inputs[op.right_file_path].path
-                    logging.info(f"Binding with input key '{op.right_file_path}' resolved to path '{resolved_right_path_str}' on {op.left_on} = {op.right_on}")
+            if apply_func:
+                # Special case for bind operation needing pipeline_inputs
+                if op.operation_type == 'bind':
+                    # We know op is BindOperation here due to dispatcher structure
+                    current_df = apply_func(current_df, op, pipeline_inputs) # type: ignore
                 else:
-                    # Assume it's a direct path relative to project root
-                    resolved_right_path_str = op.right_file_path
-                    logging.info(f"Binding with direct path '{resolved_right_path_str}' on {op.left_on} = {op.right_on}")
+                    current_df = apply_func(current_df, op)
 
-                right_file_path = Path(resolved_right_path_str)
-                if not right_file_path.exists():
-                    # Try resolving relative to the pipeline file's directory as a fallback? No, stick to project root.
-                    raise FileNotFoundError(f"BindOperation: Right file not found at resolved path '{resolved_right_path_str}' (from operation value '{op.right_file_path}')")
-
-                right_dtype_map = {}
-                for col_name, type_str in op.right_schema_columns.items():
-                    pl_type = POLARS_TYPE_MAP.get(type_str)
-                    if pl_type: right_dtype_map[col_name] = pl_type
-                    else: logging.warning(f"BindOperation: No Polars type mapping for right schema type '{type_str}' for column '{col_name}'. Polars will infer.")
-
-                try:
-                    df_right = pl.read_csv(right_file_path, schema_overrides=right_dtype_map, infer_schema_length=1000 if not right_dtype_map else 0)
-                    logging.debug(f"Right DataFrame loaded. Shape: {df_right.shape}, Columns: {df_right.columns}")
-                except Exception as e:
-                    raise ValueError(f"BindOperation: Error reading right file '{right_file_path}': {e}") from e
-
-                if op.left_on not in current_df.columns: raise ValueError(f"BindOperation: Left join key '{op.left_on}' not found in current DataFrame.")
-                if op.right_on not in df_right.columns: raise ValueError(f"BindOperation: Right join key '{op.right_on}' not found in right DataFrame ('{right_file_path}').")
-                missing_add_cols = [col for col in op.columns_to_add if col not in df_right.columns]
-                if missing_add_cols: raise ValueError(f"BindOperation: Columns specified in 'columns_to_add' not found in right DataFrame: {missing_add_cols}")
-
-                try:
-                    cols_to_select_from_right = list(set([op.right_on] + op.columns_to_add))
-                    df_right_selected = df_right.select(cols_to_select_from_right)
-                    current_df = current_df.join(df_right_selected, left_on=op.left_on, right_on=op.right_on, how=op.how)
-                    logging.debug(f"DataFrame shape after join: {current_df.shape}")
-                except Exception as e:
-                    raise ValueError(f"BindOperation: Error during join operation: {e}") from e
-
+                # Track temporary columns created by assignation
+                # Ensure op has 'output_column' before checking startswith/endswith
+                if hasattr(op, 'output_column') and op.operation_type == 'assignation' and op.output_column.startswith('_') and op.output_column.endswith('_literal'):
+                    temp_cols.add(op.output_column)
             else:
-                logging.warning(f"Unsupported operation type encountered: {type(op)}. Skipping.")
+                logging.warning(f"Unsupported operation type encountered: {op.operation_type}. Skipping.")
 
         except Exception as e:
             logging.error(f"Error applying operation {i+1} ({op.operation_type} -> {op.output_column}): {e}", exc_info=True)
-            raise
+            # Add more context to the error message if possible
+            error_context = f"Error in operation {i+1} ({op.operation_type} -> {op.output_column}). Details: {e}"
+            # You might want to wrap the original exception or just raise a new one with context
+            raise ValueError(error_context) from e
 
+    # Remove temporary columns after all operations are done
     if temp_cols:
         cols_to_drop = [col for col in temp_cols if col in current_df.columns]
         if cols_to_drop:
@@ -439,10 +312,10 @@ def apply_operations(df: pl.DataFrame, operations: list, pipeline_inputs: Dict[s
 
 # --- Output Data Saving ---
 
-def save_output_data(df: pl.DataFrame, output_def: OutputDefinition):
-    """Saves the transformed Polars DataFrame based on an OutputDefinition."""
+def save_data(df: pl.DataFrame, output_def: FileDefinition):
+    """Saves the transformed Polars DataFrame based on an FileDefinition."""
     output_path = Path(output_def.path)
-    output_format = output_def.format # Use format from OutputDefinition
+    output_format = output_def.format # Use format from FileDefinition
     schema = output_def.file_schema
     logging.info(f"Preparing output data for: {output_path} (Schema: {schema.name}, Format: {output_format})")
 
@@ -454,41 +327,41 @@ def save_output_data(df: pl.DataFrame, output_def: OutputDefinition):
     present_output_cols = []
 
     if not output_column_names:
-        logging.warning(f"No columns defined in output schema '{schema.name}'. Saving all columns to {output_path}.")
+        logging.warning(f"No columns defined in schema '{schema.name}'. Saving all columns to {output_path}.")
     else:
-        logging.info(f"Selecting and ordering output columns for {output_path}: {output_column_names}")
+        logging.info(f"Selecting and ordering columns for {output_path}: {output_column_names}")
         for col in output_column_names:
             if col in df.columns:
                 present_output_cols.append(col)
             else:
-                logging.warning(f"Column '{col}' defined in output schema '{schema.name}' but not found in final DataFrame. Skipping for {output_path}.")
+                logging.warning(f"Column '{col}' defined in schema '{schema.name}' but not found in final DataFrame. Skipping for {output_path}.")
                 missing_output_cols.append(col)
 
         if not present_output_cols:
-             logging.error(f"No columns specified in the output schema '{schema.name}' were found in the transformed data. Output file '{output_path}' will be empty or invalid.")
+             logging.error(f"No columns specified in the schema '{schema.name}' were found in the transformed data. Output file '{output_path}' will be empty or invalid.")
              final_df = df.select([])
         else:
             final_df = df.select(present_output_cols)
 
-    logging.info(f"Saving output data to: {output_path} (Format: {output_format})")
+    logging.info(f"Saving data to: {output_path} (Format: {output_format})")
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if output_format == 'csv':
-            final_df.write_csv(output_path)
-        elif output_format == 'json':
-             import json
-             with open(output_path, 'w') as f:
-                 json.dump(final_df.to_dicts(), f, indent=2)
-        elif output_format == 'parquet':
-             final_df.write_parquet(output_path)
-        else:
-            # Should be caught by Pydantic, but defensive check
-            raise NotImplementedError(f"Output format '{output_format}' is not supported.")
+        match output_format:
+            case 'csv':
+                final_df.write_csv(output_path)
+            case 'json':
+                with open(output_path, 'w') as f:
+                    json.dump(final_df.to_dicts(), f, indent=2)
+            case 'parquet':
+                final_df.write_parquet(output_path)
+            case _:
+                # Should be caught by Pydantic, but defensive check
+                raise NotImplementedError(f"Format '{output_format}' is not supported.")
 
-        logging.info(f"Output data saved successfully to {output_path}.")
+        logging.info(f"Data saved successfully to {output_path}.")
         if missing_output_cols:
-             logging.warning(f"Note for {output_path}: Columns defined in output schema '{schema.name}' but missing from final data: {missing_output_cols}")
+             logging.warning(f"Note for {output_path}: Columns defined in schema '{schema.name}' but missing from final data: {missing_output_cols}")
 
     except Exception as e:
         logging.error(f"Error saving output file '{output_path}': {e}")
@@ -497,7 +370,7 @@ def save_output_data(df: pl.DataFrame, output_def: OutputDefinition):
 
 # --- Operation Loading ---
 
-def load_operations_from_file(file_path: Path) -> List:
+def load_operations_from_file(file_path: Path) -> Sequence[BaseOperation]: # Changed return type hint
     """Loads and validates operations structure from a YAML file."""
     logging.info(f"Loading pre-defined operations from: {file_path}")
     if not file_path.exists():
@@ -526,7 +399,7 @@ def load_operations_from_file(file_path: Path) -> List:
                      "operations": [op_dict]
                  }
                  validated_pipeline = EtlPipeline.model_validate(dummy_pipeline_dict)
-                 validated_operations.append(validated_pipeline.operations[0])
+                 validated_operations.append(validated_pipeline.operations[0]) # Append the validated Pydantic object
              except Exception as e:
                  logging.error(f"Syntax validation failed for loaded operation {i+1}: {op_dict}. Error: {e}", exc_info=True)
                  raise ValueError(f"Syntax validation failed for loaded operation {i+1}: {e}")
@@ -571,10 +444,10 @@ def main():
         primary_input_key = list(pipeline.inputs.keys())[0]
         primary_input_def = pipeline.inputs[primary_input_key]
         logging.info(f"Using '{primary_input_key}' as the primary input source.")
-        df_initial = load_input_data(primary_input_def)
+        df_initial = load_data(primary_input_def)
 
         # 3. Determine Operations
-        final_operations = None
+        final_operations: Optional[Sequence[BaseOperation]] = None # Type hint for clarity
         df_transformed = None # Initialize df_transformed to None
         operations_source = "pipeline YAML" # Default source
 
@@ -606,10 +479,11 @@ def main():
                          continue
 
                     # Validate syntax by trying to create Pydantic models
-                    validated_llm_ops = []
+                    validated_llm_ops: List[BaseOperation] = [] # Keep as List for appending, but it's compatible with Sequence
                     logging.info("Validating LLM-generated operations syntax...")
                     op_dict_for_validation = None
                     try:
+                        # Validate each operation individually within a dummy pipeline context
                         dummy_pipeline_dict = {
                             "inputs": {"dummy": {"path": "dummy", "file_schema": {"name": "Dummy", "columns": {}}}},
                             "outputs": {"dummy": {"path": "dummy", "format": "csv", "file_schema": {"name": "Dummy", "columns": {}}}},
@@ -617,9 +491,9 @@ def main():
                         }
                         for i, op_dict in enumerate(generated_ops_list):
                             op_dict_for_validation = op_dict
-                            dummy_pipeline_dict["operations"] = [op_dict]
+                            dummy_pipeline_dict["operations"] = [op_dict] # Validate one at a time
                             validated_pipeline = EtlPipeline.model_validate(dummy_pipeline_dict)
-                            validated_llm_ops.append(validated_pipeline.operations[0])
+                            validated_llm_ops.append(validated_pipeline.operations[0]) # Append validated Pydantic object
                         logging.info("LLM-generated operations syntax validated successfully.")
                     except Exception as e:
                         logging.error(f"Attempt {attempt + 1}: Syntax validation failed for LLM-generated operation: {op_dict_for_validation}. Error: {e}", exc_info=True)
@@ -635,7 +509,7 @@ def main():
                     all_outputs_valid = True
                     output_feedback_list = []
                     for output_key, output_def in pipeline.outputs.items():
-                        output_validation_feedback = validate_output_schema(df_attempt, output_def)
+                        output_validation_feedback = validate_schema(df_attempt, output_def)
                         if output_validation_feedback is not None:
                             all_outputs_valid = False
                             output_feedback_list.append(output_validation_feedback)
@@ -660,11 +534,11 @@ def main():
                  logging.error(f"Failed to generate a valid ETL pipeline via LLM after {MAX_ATTEMPTS} attempts.")
                  if args.save_operations and llm_generated_ops: # Save the raw list from the last attempt
                       logging.info(f"Saving last failed LLM operations attempt to: {args.save_operations}")
-                      save_data = {'operations': llm_generated_ops, 'final_attempt_feedback': feedback}
+                      save_data_ = {'operations': llm_generated_ops, 'final_attempt_feedback': feedback}
                       try:
                           args.save_operations.parent.mkdir(parents=True, exist_ok=True)
                           with open(args.save_operations, 'w') as f:
-                              yaml.dump(save_data, f, sort_keys=False, default_flow_style=False)
+                              yaml.dump(save_data_, f, sort_keys=False, default_flow_style=False)
                       except Exception as e:
                           logging.error(f"Failed to save last failed LLM operations: {e}")
                  sys.exit(1)
@@ -682,10 +556,10 @@ def main():
         final_success = True
         for output_key, output_def in pipeline.outputs.items():
             logging.info(f"--- Processing Output: {output_key} ---")
-            output_validation_feedback = validate_output_schema(df_transformed, output_def)
+            output_validation_feedback = validate_schema(df_transformed, output_def)
             if output_validation_feedback is None:
                 try:
-                    save_output_data(df_transformed, output_def)
+                    save_data(df_transformed, output_def)
                 except Exception as e:
                     logging.error(f"Failed to save output '{output_key}' to '{output_def.path}': {e}")
                     final_success = False # Mark failure but continue processing other outputs
@@ -699,10 +573,10 @@ def main():
             try:
                 # Convert Pydantic objects back to dicts for saving
                 ops_to_save = [op.model_dump() for op in final_operations]
-                save_data = {'operations': ops_to_save}
+                save_data_ = {'operations': ops_to_save}
                 args.save_operations.parent.mkdir(parents=True, exist_ok=True)
                 with open(args.save_operations, 'w') as f:
-                    yaml.dump(save_data, f, sort_keys=False, default_flow_style=False)
+                    yaml.dump(save_data_, f, sort_keys=False, default_flow_style=False)
                 logging.info("Final operations saved successfully.")
             except Exception as e:
                 logging.error(f"Failed to save final operations: {e}", exc_info=True)
