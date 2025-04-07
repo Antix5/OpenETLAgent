@@ -38,13 +38,14 @@ You MUST use the following operation types and adhere strictly to their YAML syn
 **IMPORTANT NOTES ON COLUMN REFERENCING AND TYPES:**
 - When specifying column names in operation fields like `input_columns`, `input_column`, `condition_column`, `true_column`, `false_column`, `left_on`, `right_on`, use the exact column name as it exists in the data *at that point in the operation sequence* (usually WITHOUT the 'table_name.' prefix like '{primary_input_key}.'). Refer to the Input/Output Schema definitions for available field names and their types.
 - **CRITICAL**: Pay close attention to data types defined in the schemas. Ensure operands in `arithmetic` and `comparison` operations are type-compatible before the operation runs. **YOU MUST insert `casting` operations where necessary *before* performing arithmetic or comparisons if types might mismatch** (e.g., comparing a 'string' column from the schema to a numeric `value`, or adding two columns where one is integer and one is float). The `value` field in `comparison` and `assignation` takes literals (strings, numbers, booleans).
-- **NOTE on bind output**: Columns added via the `bind` operation's `columns_to_add` list will keep their names from the right file's schema (e.g., adding `country` from customers adds a column named `country`). If the Output Schema requires a different name for such a column (e.g., `customer_country`), **YOU MUST use an `assignation` operation after the `bind`** to copy the value from the bound column (e.g., `country`) to the required output column name (e.g., `customer_country`).
+- **NOTE on bind output**: Columns added via the `bind` operation's `columns_to_add` list will keep their names from the right file's schema (e.g., adding `full_name` from customers adds a column named `full_name`). **Verify these names against the provided Input Schemas.** If the Output Schema requires different names for these bound columns (e.g., `customer_name`), **YOU MUST use an `assignation` operation after the `bind`** to copy the value from the *correctly named* bound column (e.g., `full_name`) to the required output column name (e.g., `customer_name`).
+- **NOTE on concatenation prefix/suffix**: To add a fixed prefix or suffix using `concatenation`, first use `assignation` to create a column containing the literal prefix/suffix string, then use `concatenation` joining the prefix/suffix column and the data column(s).
 
 1.  **assignation**: Assigns a value to the output column. The value can be a literal OR copied from another existing column.
     ```yaml
     - operation_type: assignation
       output_column: new_column_name # String: Name of column to create/overwrite
-      # Provide EITHER a literal value OR the name of an existing column to copy from
+      # Provide EITHER a literal value OR the name of an existing column to copy data FROM
       value: source_column_or_literal # String (for source column name) OR Literal (String, Number, Boolean)
     ```
     Syntax Example (Literal):
@@ -53,11 +54,15 @@ You MUST use the following operation types and adhere strictly to their YAML syn
       output_column: status_description
       value: "Processed"
     ```
-    Syntax Example (From Column):
+    Syntax Example (From Column after Bind):
     ```yaml
+    # Assumes 'bind' previously added columns 'full_name' and 'registration_country'
     - operation_type: assignation
-      output_column: customer_country # Target column name required by output schema
-      value: country # Source column name (e.g., added by a previous bind operation)
+      output_column: customer_name # Target column name required by output schema
+      value: full_name # Source column name added by bind (MUST match actual name)
+    - operation_type: assignation
+      output_column: customer_country
+      value: registration_country # Source column name added by bind (MUST match actual name)
     ```
 
 2.  **equality**: Checks if values in `input_column` are equal (purpose unclear from model, requires implementation details or model update). Outputs boolean to `output_column`.
@@ -67,7 +72,7 @@ You MUST use the following operation types and adhere strictly to their YAML syn
       input_column: column_to_check
     ```
 
-3.  **concatenation**: Joins values from multiple input columns into the output column, optionally using a separator.
+3.  **concatenation**: Joins values from multiple input columns (`input_columns`) using an optional `separator`. See NOTE above for adding fixed prefixes/suffixes.
     ```yaml
     - operation_type: concatenation
       output_column: combined_output
@@ -76,7 +81,7 @@ You MUST use the following operation types and adhere strictly to their YAML syn
         - col_part2
       separator: "-"
     ```
-    Syntax Example:
+    Syntax Example (Joining two columns):
     ```yaml
     - operation_type: concatenation
       output_column: full_name
@@ -84,6 +89,20 @@ You MUST use the following operation types and adhere strictly to their YAML syn
         - first_name
         - last_name
       separator: " "
+    ```
+    Syntax Example (Adding prefix "ORD-" to 'order_id'):
+    ```yaml
+    # Step 1: Assign the literal prefix
+    - operation_type: assignation
+      output_column: _prefix_ # Temporary column for prefix
+      value: "ORD-"
+    # Step 2: Concatenate prefix and id (no separator needed if joining directly)
+    - operation_type: concatenation
+      output_column: order_ref # Final output column
+      input_columns:
+        - _prefix_
+        - order_id
+      # separator: "" # Or omit if default is ""
     ```
 
 4.  **application**: Applies a Python lambda function (as a string) using specified input columns. The lambda acts on a row represented by 'r'. **NOTE**: This operation cannot reliably use built-in functions like `bool()`, `int()`, etc. Use `casting` for type conversions.
@@ -178,41 +197,42 @@ You MUST use the following operation types and adhere strictly to their YAML syn
       value: 3
     ```
 
-9. **bind**: Joins the current data (left) with an external file (right) based on specified keys and adds selected columns from the right file.
+9. **bind**: Joins the current data (left) with an external file (right) based on specified keys and adds selected columns from the right file. **Ensure `right_on` and names in `columns_to_add` exactly match names in the right file's schema.**
     ```yaml
     - operation_type: bind
       output_column: bind_placeholder
       right_file_path: "path/to/lookup_file.csv"
-      right_schema_columns: {{column_name: type_string}}
+      right_schema_columns: {{column_name: type_string}} # Define schema accurately here if not in Input Schemas
         key_column_in_right: string
         value_column_in_right: float
       left_on: join_key_in_left
-      right_on: key_column_in_right
+      right_on: key_column_in_right # MUST exist in right schema
       how: "left"
-      columns_to_add:
+      columns_to_add: # List[String]: Names MUST exist in right schema
         - value_column_in_right
     ```
     Syntax Example:
     ```yaml
+    # Assumes customers file schema has 'cust_id', 'full_name', 'registration_country'
     - operation_type: bind
       output_column: ignored_bind_output
       right_file_path: "lookup_file.csv"
-      right_schema_columns:
+      right_schema_columns: # Example if schema not provided elsewhere
          cust_id: integer
-         customer_name: string
-         country: string
+         full_name: string       # Correct Name
+         registration_country: string # Correct Name
       left_on: customer_id
-      right_on: cust_id
+      right_on: cust_id           # Matches cust_id in right schema
       how: "left"
       columns_to_add:
-        - customer_name
-        - country
+        - full_name           # Add correct name
+        - registration_country # Add correct name
     ```
 
 --- END AVAILABLE OPERATIONS AND THEIR YAML SYNTAX ---
 
 Generate *only* the YAML list of operations required for the transformation, starting *exactly* with `- operation_type: ...`.
-Use ONLY the operations listed above and strictly adhere to the specified YAML syntax derived from the Pydantic models. Base the sequence of operations and their parameters SOLELY on the Input/Output Schema mapping. **Remember to insert `casting` operations when types are incompatible for comparison or arithmetic.** Ensure the final set of columns and their types match the Output Schema.
+Use ONLY the operations listed above and strictly adhere to the specified YAML syntax derived from the Pydantic models. Base the sequence of operations and their parameters SOLELY on the Input/Output Schema mapping provided above. **Pay extremely close attention to using correct column names from the provided schemas, especially for `bind` operations.** Remember to insert `casting` operations when types are incompatible for comparison or arithmetic. Ensure the final set of columns and their types match the Output Schema.
 Do not include any introductory text, explanations, comments, or markdown formatting like ```yaml ... ``` around the final YAML list output.
 """
     return prompt
