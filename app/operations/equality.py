@@ -2,7 +2,9 @@ import polars as pl
 from app.models import EqualityOperation
 
 def apply_equality(df: pl.DataFrame, op: EqualityOperation) -> pl.DataFrame:
-    """Applies the equality operation (renames or duplicates a column)."""
+    """Copies the input_column to the output_column (effectively renaming or duplicating it)."""
+    if not op.output_column:
+        raise ValueError("EqualityOperation requires an 'output_column'.")
     if op.input_column not in df.columns:
         raise ValueError(f"EqualityOperation: Input column '{op.input_column}' not found in DataFrame columns: {df.columns}")
     return df.with_columns(

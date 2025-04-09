@@ -1,5 +1,6 @@
-cust_id,full_name,registration_country
-55,Alice Smith,UK
-23,Bob Johnson,USA
-81,Charlie Brown,UK
-12,Diana Prince,USA
+customer_id,customer_name,city,country,signup_date
+1,Alice Smith,New York,USA,2023-05-10
+2,Bob Johnson,London,UK,2023-06-15
+3,Charlie Brown,Paris,France,2023-07-20
+4,Diana Prince,Toronto,Canada,2023-08-25
+5,Ethan Hunt,Berlin,Germany,2023-09-30

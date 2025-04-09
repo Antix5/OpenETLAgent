@@ -1,0 +1,76 @@
+# Central configuration for inputs and outputs
+
+inputs:
+  orders_input:
+    path: input_folder/orders.csv
+    file_schema: # Renamed 'schema' to 'file_schema'
+      name: OrdersSchema
+      columns:
+        order_id: { type: integer }
+        customer_id: { type: integer }
+        order_date: { type: string } # Will be cast in pipelines
+        product_name: { type: string }
+        quantity: { type: integer }
+        unit_price: { type: string } # Will be cleaned and cast in pipelines
+
+  customers_input:
+    path: input_folder/customers.csv
+    file_schema: # Renamed 'schema' to 'file_schema'
+      name: CustomersSchema
+      columns:
+        customer_id: { type: integer }
+        customer_name: { type: string }
+        city: { type: string }
+        country: { type: string }
+        signup_date: { type: string } # Will be cast in pipelines
+
+  products_input:
+    path: input_folder/products.csv
+    file_schema: # Renamed 'schema' to 'file_schema'
+      name: ProductsSchema
+      columns:
+        product_name: { type: string }
+        category: { type: string }
+        cost_price: { type: string } # Will be cast in pipelines
+
+outputs:
+  enriched_output_def:
+    path: output_folder/enriched_orders_final.csv
+    format: csv
+    file_schema:
+      name: EnrichedSchema
+      columns:
+        order_id: { type: integer }
+        customer_id: { type: integer }
+        order_date_dt: { type: date }
+        product_name: { type: string }
+        quantity: { type: integer }
+        unit_price_float: { type: float }
+        total_price: { type: float }
+        customer_name: { type: string }
+        city: { type: string }
+        country: { type: string }
+        signup_date_dt: { type: date }
+        customer_region: { type: string }
+        category: { type: string }
+        cost_price_float: { type: float }
+        total_cost: { type: float }
+        profit: { type: float }
+        is_high_profit: { type: boolean }
+        customer_location: { type: string }
+        order_status: { type: string }
+
+  summary_output_def:
+    path: output_folder/profit_by_region_category.csv
+    format: csv
+    file_schema:
+      name: SummarySchema
+      # Note: Column names here depend on the 'category' values in products.csv
+      # Pydantic schema validation might be tricky for dynamic columns like this.
+      # We'll define the known index column and expect others.
+      columns:
+        customer_region: { type: string }
+        # Example dynamic columns (actual names depend on data):
+        # Electronics: { type: float }
+        # Furniture: { type: float }
+        # Stationery: { type: float }
