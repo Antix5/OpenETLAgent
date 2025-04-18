@@ -13,6 +13,8 @@ import litellm
 from typing import List, Optional, Dict, Sequence, Tuple, Any
 import re
 
+litellm.suppress_debug_info = True
+
 # Import models and prompt functions
 from app.models import (
     PipelineConfig, PipelineFlow, FileDefinition, BaseOperation, AnyOperation,
@@ -36,8 +38,27 @@ from app.operations.unfold import apply_unfold
 # Load environment variables from .env file
 load_dotenv()
 
+# Check environment variable to control LLM output printing for debugging
+SHOW_MODEL_OUTPUT = os.getenv('SHOW_MODEL_OUTPUT', 'False').lower() == 'true'
+
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s') # Changed level to WARNING
+
+# Define a filter to suppress LiteLLM INFO messages
+class SuppressLiteLLMInfoFilter(logging.Filter):
+    def filter(self, record):
+        # Suppress INFO messages specifically from loggers starting with 'litellm'
+        return not (record.name.startswith('litellm') and record.levelno == logging.INFO)
+
+# Add the filter to the root logger's handlers
+# This assumes basicConfig added a handler to the root logger
+# Add filter only if handlers exist to avoid errors if basicConfig fails or is changed
+if logging.root.handlers:
+    for handler in logging.root.handlers:
+        handler.addFilter(SuppressLiteLLMInfoFilter())
+else:
+    logging.warning("No handlers found on root logger after basicConfig. LiteLLM INFO filter not applied.")
+
 
 # Define pipelines directory
 PIPELINES_DIR = Path("pipelines")
@@ -58,8 +79,8 @@ OPERATION_DISPATCHER = {
 }
 
 # --- LLM Generation (Step-by-Step) ---
-MAX_STEPS = 30 # Maximum number of operations to generate per pipeline
-MAX_LLM_ATTEMPTS_PER_STEP = 3 # Retries for LLM call or validation failure
+MAX_STEPS = 5 # Maximum number of operations to generate per pipeline
+MAX_LLM_ATTEMPTS_PER_STEP = 2 # Retries for LLM call or validation failure
 
 def generate_pipeline_step_by_step(
     config: PipelineConfig,
@@ -82,10 +103,10 @@ def generate_pipeline_step_by_step(
             if not os.getenv("GEMINI_API_KEY"):
                    raise ValueError("GEMINI_API_KEY not found.")
             response = litellm.completion(
-                   model="gemini/gemini-2.0-flash",
-                   messages=[{"role": "user", "content": initial_prompt}],
-                   max_tokens=500
-                )
+                    model="gemini/gemini-2.0-flash",
+                    messages=[{"role": "user", "content": initial_prompt}],
+                    max_tokens=500
+                 )
             # Safely access content
             source_key_content = None
             if response and response.choices and response.choices[0].message: # type: ignore
@@ -113,6 +134,7 @@ def generate_pipeline_step_by_step(
     # 2. Load Initial Data and Schema
     source_def = config.inputs[source_key]
     current_df = load_data(source_def)
+    current_state_header : str = current_df.head(3).write_json()
     operations_history: List[Dict[str, Any]] = []
     validated_operations: List[AnyOperation] = []
 
@@ -131,6 +153,7 @@ def generate_pipeline_step_by_step(
                     target_output_def=target_output_def,
                     inputs=config.inputs,
                     operations_history=operations_history,
+                    current_state_header=current_state_header,
                     previous_feedback=feedback
                 )
 
@@ -138,9 +161,9 @@ def generate_pipeline_step_by_step(
                     raise ValueError("GEMINI_API_KEY not found.")
                 response = litellm.completion(
                     model="gemini/gemini-2.0-flash",
-                    messages=[{"role": "user", "content": next_op_prompt}],
+                    messages=[{"role": "user", "content": next_op_prompt}]
                 )
-                logging.debug(f"Raw litellm.completion response: {response}")  # ADDED LOGGING
+
                 # Safely access content
                 llm_output_content = None
                 if response and response.choices and response.choices[0].message: # type: ignore
@@ -148,15 +171,38 @@ def generate_pipeline_step_by_step(
 
                 if not isinstance(llm_output_content, str):
                      raise ValueError("LLM response content was not a string.")
+                
+                match = re.search(r"^```yaml\s*(.*?)\s*```$", llm_output_content, flags=re.M | re.S)
+                cleaned_yaml = match.group(1).strip() if match else ""
 
-                logging.debug(f"Raw LLM Output for step {step+1}:\n{llm_output_content}")
-                cleaned_yaml = re.sub(r'^```yaml\s*|\s*```$', '', llm_output_content, flags=re.MULTILINE).strip()
-                logging.debug(f"Cleaned YAML for step {step+1}:\n{cleaned_yaml}")  # ADDED LOGGING
-                next_op_dict = yaml.safe_load(cleaned_yaml)
+                # Conditional printing for debugging LLM output
+                if SHOW_MODEL_OUTPUT:
+                    print(f"\n--- RAW LLM OUTPUT (Step {step+1}, Attempt {attempt+1}) ---")
+                    print(llm_output_content)
+                    print("----------------------------------------------------\n")
+                    # Also print the cleaned version right before parsing
+                    # Use a separate variable for printing to avoid altering the one used for parsing
+
+                    print(f"--- CLEANED YAML (Ready for Parsing) ---")
+                    print(cleaned_yaml)
+                    print("----------------------------------------\n")
+
+                # Proceed with cleaning and parsing
+                
+                next_op_dict_raw = yaml.safe_load(cleaned_yaml)
+
+                try:
+                    next_op_dict = next_op_dict_raw[0]
+                except Exception:
+                    raise ValueError("Could not parse the yaml you provided, make sure you didn't miss '- ' in front of operation type")
+
+
+                if SHOW_MODEL_OUTPUT:
+                    print("parsed yaml : ", next_op_dict_raw)
 
                 if not isinstance(next_op_dict, dict) or 'operation_type' not in next_op_dict:
                      raise ValueError("LLM did not output a valid YAML dictionary with 'operation_type'.")
-
+                
                 # b. Check for 'done' signal
                 if next_op_dict['operation_type'] == 'done':
                     logging.info("LLM signaled completion ('operation_type: done').")
@@ -187,7 +233,8 @@ def generate_pipeline_step_by_step(
                         models.UnfoldOperation,
                     ]:
                         try:
-                            validated_op = operation_type.parse_obj(next_op_dict)
+                            # Use model_validate instead of deprecated parse_obj
+                            validated_op = operation_type.model_validate(next_op_dict)
                             op_type_str = getattr(validated_op, 'operation_type', 'UnknownType')
                             logging.info(f"Step {step+1}: Syntax validated for operation '{op_type_str}'.")
                             break  # Exit loop if validation succeeds
@@ -208,8 +255,13 @@ def generate_pipeline_step_by_step(
                     df_next = apply_operations(current_df.clone(), [validated_op], config.inputs) # type: ignore[list-item] # Pylance struggles with Sequence[Base] vs List[Union]
                     logging.info(f"Step {step+1}, Attempt {attempt+1}: Operation applied successfully.")
 
+                    if SHOW_MODEL_OUTPUT:
+                        print("the current table look like this :")
+                        print(current_df)
+
                     # Update state and break inner loop
                     current_df = df_next
+                    current_state_header : str = current_df.head(3).write_json()
                     operations_history.append(next_op_dict)
                     validated_operations.append(validated_op) # Append validated op
                     feedback = None
@@ -568,4 +620,5 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
+    litellm.suppress_debug_info = True
     main()

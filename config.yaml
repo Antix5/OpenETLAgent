@@ -60,16 +60,17 @@ outputs:
         customer_location: { type: string }
         order_status: { type: string }
 
-  summary_output_def:
-    path: output_folder/profit_by_region_category.csv
-    format: csv
-    file_schema:
-      name: SummarySchema
+
+  #summary_output_def:
+  #  path: output_folder/profit_by_region_category.csv
+  #  format: csv
+  #  file_schema:
+  #    name: SummarySchema
       # Note: Column names here depend on the 'category' values in products.csv
       # Pydantic schema validation might be tricky for dynamic columns like this.
       # We'll define the known index column and expect others.
-      columns:
-        customer_region: { type: string }
+  #    columns:
+  #      customer_region: { type: string }
         # Example dynamic columns (actual names depend on data):
         # Electronics: { type: float }
         # Furniture: { type: float }

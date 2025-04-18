@@ -1,6 +1,5 @@
 .env
 app/__pycache__
-app/operations/__pycache__/asignation.cpython-311.pyc
-app/operations/__pycache__/equality.cpython-311.pyc
-app/operations/__pycache__/fold.cpython-311.pyc
-app/operations/__pycache__/asignation.cpython-311.pyc
+app/operations/__pycache__/
+
+app/operations/__pycache__/*
