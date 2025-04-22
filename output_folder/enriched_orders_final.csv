@@ -1,0 +1,11 @@
+order_id,customer_id,order_date_dt,product_name,quantity,unit_price_float,total_price,customer_name,city,country,signup_date_dt,category,cost_price_float,total_cost,profit,is_high_profit,order_status
+101,1,2024-01-15,Laptop Pro,1,1050.0,1050.0,Alice Smith,New York,USA,2023-05-10,Electronics,850.0,850.0,200.0,true,UNKNOWN
+102,2,2024-01-16,Wireless Mouse,2,25.5,51.0,Bob Johnson,London,UK,2023-06-15,Electronics,22.5,45.0,6.0,false,UNKNOWN
+103,1,2024-01-17,Keyboard Pro,1,80.0,80.0,Alice Smith,New York,USA,2023-05-10,Electronics,75.0,75.0,5.0,false,UNKNOWN
+104,3,2024-01-18,Notebook Basic,10,1.75,17.5,Charlie Brown,Paris,France,2023-07-20,Stationery,1.5,15.0,2.5,false,UNKNOWN
+105,2,2024-01-19,Monitor Wide,1,300.0,300.0,Bob Johnson,London,UK,2023-06-15,Electronics,280.5,280.5,19.5,false,UNKNOWN
+106,4,2024-01-20,Smartphone X,1,700.0,700.0,Diana Prince,Toronto,Canada,2023-08-25,Electronics,650.0,650.0,50.0,false,UNKNOWN
+107,1,2024-01-21,Wireless Mouse,1,25.5,25.5,Alice Smith,New York,USA,2023-05-10,Electronics,22.5,22.5,3.0,false,UNKNOWN
+108,5,2024-01-22,Office Chair,2,130.0,260.0,Ethan Hunt,Berlin,Germany,2023-09-30,Furniture,120.75,241.5,18.5,false,UNKNOWN
+109,3,2024-01-23,Pen Set,5,9.5,47.5,Charlie Brown,Paris,France,2023-07-20,Stationery,8.99,44.95,2.549999999999997,false,UNKNOWN
+110,4,2024-01-24,Desk Lamp,1,40.0,40.0,Diana Prince,Toronto,Canada,2023-08-25,Furniture,35.2,35.2,4.799999999999997,false,UNKNOWN

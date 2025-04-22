@@ -18,12 +18,15 @@ def apply_application(df: pl.DataFrame, op: ApplicationOperation) -> pl.DataFram
         # Evaluate the function string in a restricted environment
         lambda_func = eval(op.function_str, {"__builtins__": safe_builtins}, {})
 
+        # Ensure an output column is specified for this operation
+        if op.output_column is None:
+            raise ValueError("ApplicationOperation requires an 'output_column' to be specified.")
+
         # Apply the function using map_elements
         map_expr = pl.struct(op.input_columns).map_elements(
-            lambda row_struct: lambda_func(row_struct),
-            # Defaulting to string, casting might be needed later based on schema
-            return_dtype=pl.Utf8
-        ).alias(op.output_column)
+            lambda row_struct: lambda_func(row_struct)
+            # return_dtype removed - Polars will infer it
+        ).alias(op.output_column) # op.output_column is now guaranteed non-None
 
         return df.with_columns(map_expr)
     except Exception as e:

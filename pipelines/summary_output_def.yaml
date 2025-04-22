@@ -1,0 +1,100 @@
+source: orders_input
+operations:
+- operation_type: bind
+  output_column: bind_placeholder
+  right_file_path: customers_input
+  right_schema_columns:
+    customer_id: integer
+    customer_name: string
+    city: string
+    country: string
+    signup_date: string
+  left_on: customer_id
+  right_on: customer_id
+  how: left
+  columns_to_add:
+  - country
+- operation_type: equality
+  output_column: customer_region
+  input_column: country
+- operation_type: bind
+  output_column: bind_placeholder
+  right_file_path: customers_input
+  right_schema_columns:
+    customer_id: integer
+    customer_name: string
+    city: string
+    country: string
+    signup_date: string
+  left_on: customer_id
+  right_on: customer_id
+  how: left
+  columns_to_add:
+  - country
+- operation_type: bind
+  output_column: bind_placeholder
+  right_file_path: products_input
+  right_schema_columns:
+    product_name: string
+    category: string
+    profit: float
+  left_on: product_name
+  right_on: product_name
+  how: left
+  columns_to_add:
+  - category
+  - profit
+- operation_type: switching
+  output_column: Electronics
+  switch_column: category
+  mapping:
+    Electronics: profit
+  default_column: null
+  default_value: 0.0
+- operation_type: switching
+  output_column: Furniture
+  switch_column: category
+  mapping:
+    Furniture: profit
+  default_column: null
+  default_value: 0.0
+- operation_type: switching
+  output_column: Stationery
+  switch_column: category
+  mapping:
+    Stationery: profit
+  default_column: null
+  default_value: 0.0
+- operation_type: assignation
+  output_column: other_column
+  value: 0.0
+- operation_type: fold
+  output_column: null
+  id_columns:
+  - customer_region
+  - product_name
+  - Electronics
+  - Furniture
+  - Stationery
+  - other_column
+  value_columns:
+  - order_id
+  - customer_id
+  - order_date
+  - product_name
+  - quantity
+  - unit_price
+  - country
+  - customer_region
+  - country_right
+  - category
+  - profit
+  - Electronics
+  - Furniture
+  - Stationery
+  - other_column
+  key_column_name: key
+  value_column_name: value
+- operation_type: equality
+  output_column: customer_region
+  input_column: customer_region

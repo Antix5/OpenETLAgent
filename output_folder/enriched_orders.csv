@@ -1,7 +1,0 @@
-order_ref,customer_name,customer_country,product_category,total_price,is_shipped
-ORD-101,Alice Smith,UK,ELE,1199.98,true
-ORD-102,Bob Johnson,USA,BOO,19.95,false
-ORD-103,Charlie Brown,UK,HOM,47.5,true
-ORD-104,Alice Smith,UK,BOO,12.0,false
-ORD-105,,,MIS,12.5,false
-ORD-106,Bob Johnson,USA,ELE,1250.0,true

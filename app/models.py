@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field # Removed PositiveInt as it's not used directly here
-from typing import List, Any, Literal, Union, Dict, Annotated
-from polars import Utf8, Int64, Float64, Boolean # Added Polars types
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Any, Literal, Union, Dict, Annotated, Optional, Sequence
+from polars import Utf8, Int64, Float64, Boolean, Date # Added Date
 
 # --- Type Mapping ---
 POLARS_TYPE_MAP = {
@@ -8,21 +8,23 @@ POLARS_TYPE_MAP = {
     'integer': Int64,
     'float': Float64,
     'boolean': Boolean,
+    'date': Date, # Added Date mapping
     'positive integer': Int64 # Keep positive integer mapping for schema definition
 }
 SCHEMA_TYPE_MAP_REVERSE = {v: k for k, v in POLARS_TYPE_MAP.items()}
+# Add reverse mapping for Date if needed
+SCHEMA_TYPE_MAP_REVERSE[Date] = 'date'
+
 
 # --- Schema Definition ---
 
 class ColumnDefinition(BaseModel):
-    name: str
-    type: Literal['string', 'integer', 'float', 'boolean', 'positive integer'] # Extend as needed
+    # Removed name field, as it will be the key in the dictionary
+    type: Literal['string', 'integer', 'float', 'boolean', 'date', 'positive integer'] # Kept 'positive integer'
     description: str | None = None
 
 class FileSchema(BaseModel):
     name: str
-    # input_format: str | None = None # Maybe needed for input schema? Path suffix usually sufficient.
-    # output_format removed, will be in FileDefinition
     columns: Dict[str, ColumnDefinition] # Use column technical name as key
 
 # --- Input/Output Definitions ---
@@ -30,17 +32,16 @@ class FileSchema(BaseModel):
 class FileDefinition(BaseModel):
     path: str = Field(..., description="Path to the file.")
     format: Literal['csv', 'json', 'parquet'] = Field(default='csv', description="Format for the file.")
-    file_schema: FileSchema = Field(..., description="Schema definition of the file.") # Renamed from 'schema'
+    file_schema: FileSchema = Field(..., description="Schema definition of the file.")
 
 
 # --- Base Operation ---
 
 class BaseOperation(BaseModel):
-    # Revert to regular field for Pydantic discriminator
     operation_type: str = Field(..., description="Discriminator field for the operation type")
-    output_column: str = Field(..., description="Name of the column to create/modify")
+    output_column: Optional[str] = Field(default=None, description="Name of the primary column to create/modify (if applicable).")
 
-# --- Specific Operations ---
+# --- Specific Operations (Keep all existing operation models) ---
 
 class EqualityOperation(BaseOperation):
     operation_type: Literal['equality'] = 'equality' # type: ignore
@@ -49,60 +50,75 @@ class EqualityOperation(BaseOperation):
 class ConcatenationOperation(BaseOperation):
     operation_type: Literal['concatenation'] = 'concatenation' # type: ignore
     input_columns: List[str]
-    separator: str = "" # Optional separator
+    separator: str = ""
 
 class ApplicationOperation(BaseOperation):
     operation_type: Literal['application'] = 'application' # type: ignore
     input_columns: List[str]
-    # How to represent the function?
-    # Option 1: String containing Python lambda expression (Security Risk!)
     function_str: str = Field(..., description="Python lambda expression string, e.g., 'lambda r: r['col_a'] + r['col_b']'. 'r' represents the row.")
-    # Option 2: Reference to a predefined function name
-    # function_name: str
 
 class SwitchingOperation(BaseOperation):
     operation_type: Literal['switching'] = 'switching' # type: ignore
-    condition_column: str # Assumed to be boolean type
-    true_column: str # Column to use if condition is true
-    false_column: str # Column to use if condition is false
+    switch_column: str = Field(..., description="Column whose values determine the switch.")
+    mapping: Dict[Any, str] = Field(..., description="Dictionary mapping values in switch_column to source column names to copy from.")
+    default_column: Optional[str] = Field(default=None, description="Column to copy from if no mapping key matches. Mutually exclusive with default_value.")
+    default_value: Optional[Any] = Field(default=None, description="Literal value to assign if no mapping key matches. Mutually exclusive with default_column.")
+
+    @model_validator(mode='before')
+    @classmethod
+    def check_default_exclusive(cls, values):
+        default_column = values.get('default_column')
+        default_value = values.get('default_value')
+        if default_column is not None and default_value is not None:
+            raise ValueError("Provide either 'default_column' or 'default_value', not both.")
+        if default_column is None and default_value is None:
+            raise ValueError("Must provide either 'default_column' or 'default_value'.")
+        return values
 
 class AssignationOperation(BaseOperation):
     operation_type: Literal['assignation'] = 'assignation' # type: ignore
-    value: Any # The constant value to assign
+    value: Any
 
 class CastingOperation(BaseOperation):
     operation_type: Literal['casting'] = 'casting' # type: ignore
     input_column: str
-    target_type: Literal['string', 'integer', 'float', 'boolean', 'positive integer'] # Match ColumnDefinition types
+    target_type: Literal['string', 'integer', 'float', 'boolean', 'date', 'positive integer'] # Kept 'positive integer'
 
 class ArithmeticOperation(BaseOperation):
     operation_type: Literal['arithmetic'] = 'arithmetic' # type: ignore
     input_columns: List[str] = Field(..., min_length=2, max_length=2, description="Exactly two input columns for the operation.")
-    operator: Literal['+', '-', '*', '/'] = Field(..., description="The arithmetic operator to apply.")
+    operator: Literal['+', '-', '*', '/']
 
 class ComparisonOperation(BaseOperation):
     operation_type: Literal['comparison'] = 'comparison' # type: ignore
-    input_column: str = Field(..., description="The input column to compare.")
-    operator: Literal['==', '!=', '>', '<', '>=', '<='] = Field(..., description="The comparison operator.")
-    # Value can be string, int, float. Pydantic handles validation.
-    # We'll cast the column to the value's type or vice-versa if needed during application.
-    value: Any = Field(..., description="The value to compare against.")
+    input_column: str
+    operator: Literal['==', '!=', '>', '<', '>=', '<=']
+    value: Any
 
 class BindOperation(BaseOperation):
-    # Note: output_column is inherited but not strictly needed here, as columns are added based on 'columns_to_add'
     operation_type: Literal['bind'] = 'bind' # type: ignore
-    right_file_path: str = Field(..., description="Path to the CSV file to join with (e.g., 'input_folder/customers.csv').")
-    # Provide schema as dict {col_name: type_string} e.g. {"cust_id": "integer", "full_name": "string"}
+    right_file_path: str = Field(..., description="Path or input key (e.g., 'customers_input') to the file to join with.")
     right_schema_columns: Dict[str, str] = Field(..., description="Schema of the right file as a dictionary {column_name: type_string}.")
-    left_on: str = Field(..., description="Column name from the left (current) DataFrame to join on.")
-    right_on: str = Field(..., description="Column name from the right DataFrame to join on.")
-    how: Literal['left', 'inner', 'outer', 'cross'] = Field(default='left', description="Type of join to perform.")
-    columns_to_add: List[str] = Field(..., description="List of column names from the right DataFrame to add to the left DataFrame.")
+    left_on: str
+    right_on: str
+    how: Literal['left', 'inner', 'outer', 'cross'] = Field(default='left')
+    columns_to_add: List[str]
 
+class FoldOperation(BaseOperation):
+    operation_type: Literal['fold'] = 'fold' # type: ignore
+    id_columns: List[str]
+    value_columns: List[str]
+    key_column_name: str
+    value_column_name: str
 
-# --- Pipeline ---
+class UnfoldOperation(BaseOperation):
+    operation_type: Literal['unfold'] = 'unfold' # type: ignore
+    index_columns: List[str]
+    key_column: str
+    value_column: str
 
-# Union of all possible operation types using discriminated union
+# --- Union of Operations ---
+
 AnyOperation = Annotated[
     Union[
         EqualityOperation,
@@ -113,14 +129,21 @@ AnyOperation = Annotated[
         CastingOperation,
         ArithmeticOperation,
         ComparisonOperation,
-        BindOperation, # Added new operation type
+        BindOperation,
+        FoldOperation,
+        UnfoldOperation,
     ],
     Field(discriminator='operation_type')
 ]
 
+# --- New Configuration and Flow Models ---
 
-class EtlPipeline(BaseModel):
-    # Replaced single input/output schema with dictionaries
+class PipelineConfig(BaseModel):
+    """Defines the overall configuration including inputs and outputs."""
     inputs: Dict[str, FileDefinition] = Field(..., description="Dictionary of named inputs, each with a path and schema.")
     outputs: Dict[str, FileDefinition] = Field(..., description="Dictionary of named outputs, each with a path, format, and schema.")
-    operations: List[AnyOperation] = [] # The sequence of operations
+
+class PipelineFlow(BaseModel):
+    """Defines the source and operations for a single pipeline flow targeting one output."""
+    source: str = Field(..., description="Key referencing an input defined in the main config.")
+    operations: List[AnyOperation] = Field(..., description="The sequence of operations for this specific flow.")
