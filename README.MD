@@ -42,8 +42,8 @@ This project uses Conda for environment management.
     *   Add your API key to the `.env` file:
         ```dotenv
         GEMINI_API_KEY=your_api_key_here
-        # Optional: Specify a different model (defaults to gemini-1.5-flash)
-        # MODEL=gemini/gemini-1.5-pro-latest
+        # Optional: Specify a different model (defaults to gemini-2.0-flash)
+        # MODEL=gemini/gemini-2.0-pro
         ```
     *   You can obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
 
