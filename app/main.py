@@ -79,8 +79,8 @@ OPERATION_DISPATCHER = {
 }
 
 # --- LLM Generation (Step-by-Step) ---
-MAX_STEPS = 5 # Maximum number of operations to generate per pipeline
-MAX_LLM_ATTEMPTS_PER_STEP = 2 # Retries for LLM call or validation failure
+MAX_STEPS = 35 # Maximum number of operations to generate per pipeline
+MAX_LLM_ATTEMPTS_PER_STEP = 6 # Retries for LLM call or validation failure
 
 def generate_pipeline_step_by_step(
     config: PipelineConfig,
@@ -103,7 +103,7 @@ def generate_pipeline_step_by_step(
             if not os.getenv("GEMINI_API_KEY"):
                    raise ValueError("GEMINI_API_KEY not found.")
             response = litellm.completion(
-                    model="gemini/gemini-2.0-flash",
+                    model=os.getenv("MODEL", "gemini-2.0-flash"),
                     messages=[{"role": "user", "content": initial_prompt}],
                     max_tokens=500
                  )
@@ -160,7 +160,7 @@ def generate_pipeline_step_by_step(
                 if not os.getenv("GEMINI_API_KEY"):
                     raise ValueError("GEMINI_API_KEY not found.")
                 response = litellm.completion(
-                    model="gemini/gemini-2.0-flash",
+                    model=os.getenv("MODEL", "gemini-2.0-flash"),
                     messages=[{"role": "user", "content": next_op_prompt}]
                 )
 

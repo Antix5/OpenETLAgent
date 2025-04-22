@@ -1,0 +1,99 @@
+source: orders_input
+operations:
+- operation_type: bind
+  output_column: bind_placeholder
+  right_file_path: customers_input
+  right_schema_columns:
+    cust_id: integer
+    full_name: string
+    city: string
+    country: string
+    signup_date: string
+  left_on: customer_id
+  right_on: cust_id
+  how: left
+  columns_to_add:
+  - full_name
+  - city
+  - country
+  - signup_date
+- operation_type: bind
+  output_column: bind_placeholder
+  right_file_path: customers_input
+  right_schema_columns:
+    cust_id: integer
+    full_name: string
+    city: string
+    country: string
+    signup_date: string
+  left_on: customer_id
+  right_on: cust_id
+  how: left
+  columns_to_add:
+  - full_name
+  - city
+  - country
+  - signup_date
+- operation_type: equality
+  output_column: customer_name
+  input_column: full_name_right
+- operation_type: casting
+  output_column: order_date_dt
+  input_column: order_date
+  target_type: date
+- operation_type: application
+  output_column: unit_price_no_dollars
+  input_columns:
+  - unit_price
+  function_str: 'lambda r: r[''unit_price''].replace(''$'', '''')'
+- operation_type: casting
+  output_column: unit_price_float
+  input_column: unit_price_no_dollars
+  target_type: float
+- operation_type: arithmetic
+  output_column: total_price
+  input_columns:
+  - unit_price_float
+  - quantity
+  operator: '*'
+- operation_type: casting
+  output_column: signup_date_dt
+  input_column: signup_date_right
+  target_type: date
+- operation_type: bind
+  output_column: bind_placeholder
+  right_file_path: products_input
+  right_schema_columns:
+    product_name: string
+    category: string
+    cost_price: string
+  left_on: product_name
+  right_on: product_name
+  how: left
+  columns_to_add:
+  - category
+  - cost_price
+- operation_type: casting
+  output_column: cost_price_float
+  input_column: cost_price
+  target_type: float
+- operation_type: arithmetic
+  output_column: total_cost
+  input_columns:
+  - cost_price_float
+  - quantity
+  operator: '*'
+- operation_type: arithmetic
+  output_column: profit
+  input_columns:
+  - total_price
+  - total_cost
+  operator: '-'
+- operation_type: comparison
+  output_column: is_high_profit
+  input_column: profit
+  operator: '>'
+  value: 100
+- operation_type: assignation
+  output_column: order_status
+  value: UNKNOWN

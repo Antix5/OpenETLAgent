@@ -40,38 +40,34 @@ outputs:
     file_schema:
       name: EnrichedSchema
       columns:
-        order_id: { type: integer }
+        order_id: { type: integer , description : "id of the order"}
         customer_id: { type: integer }
         order_date_dt: { type: date }
         product_name: { type: string }
-        quantity: { type: integer }
+        quantity: { type: integer , description : "number of items"}
         unit_price_float: { type: float }
-        total_price: { type: float }
+        total_price: { type: float , description : "unit price time the number of items"}
         customer_name: { type: string }
-        city: { type: string }
-        country: { type: string }
+        city: { type: string , description : "city of customer"}
+        country: { type: string , description : "coutry of customer" }
         signup_date_dt: { type: date }
-        customer_region: { type: string }
         category: { type: string }
         cost_price_float: { type: float }
         total_cost: { type: float }
-        profit: { type: float }
-        is_high_profit: { type: boolean }
-        customer_location: { type: string }
+        profit: { type: float , description : "price - cost"}
+        is_high_profit: { type: boolean, description : "if more that %100 profit on the product"}
         order_status: { type: string }
 
 
-  #summary_output_def:
-  #  path: output_folder/profit_by_region_category.csv
-  #  format: csv
-  #  file_schema:
-  #    name: SummarySchema
-      # Note: Column names here depend on the 'category' values in products.csv
-      # Pydantic schema validation might be tricky for dynamic columns like this.
-      # We'll define the known index column and expect others.
-  #    columns:
-  #      customer_region: { type: string }
-        # Example dynamic columns (actual names depend on data):
-        # Electronics: { type: float }
-        # Furniture: { type: float }
-        # Stationery: { type: float }
+  summary_output_def:
+    path: output_folder/profit_by_region_category.csv
+    format: csv
+    file_schema:
+      name: SummarySchema
+      columns:
+        customer_region: { type: string }
+        product_name : { type: string }
+        Electronics: { type: float , description : "profit if it's the category of the item, else 0"}
+        Furniture: { type: float , description : "profit if it's the category of the item, else 0" }
+        Stationery: { type: float , description : "profit if it's the category of the item, else 0"}
+        other_column : { type: float , description : "profit if it's the category of the item, else 0"}
